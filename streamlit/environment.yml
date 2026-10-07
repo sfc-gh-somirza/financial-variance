@@ -1,0 +1,6 @@
+name: financial_variance_app
+channels:
+  - snowflake
+dependencies:
+  - plotly
+  - snowflake-snowpark-python

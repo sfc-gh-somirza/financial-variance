@@ -1,0 +1,239 @@
+-- ============================================================
+-- 03_silver_layer.sql
+-- Dynamic tables that clean, standardize, and enrich Bronze
+-- data. TARGET_LAG = '1 hour' for near-real-time during close.
+-- ============================================================
+
+USE DATABASE FINANCIAL_VARIANCE;
+USE SCHEMA SILVER;
+USE WAREHOUSE FINANCE_WH;
+
+-- ────────────────────────────────────────────────────────────
+-- 1. COST_CENTERS_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE COST_CENTERS_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(COST_CENTER_ID)   AS COST_CENTER_ID,
+    TRIM(COST_CENTER_NAME) AS COST_CENTER_NAME,
+    TRIM(ORGANIZATION)     AS ORGANIZATION,
+    TRIM(BUSINESS_CODE)    AS BUSINESS_CODE,
+    TRIM(LEADER)           AS LEADER,
+    TRIM(REGION)           AS REGION
+FROM BRONZE.RAW_COST_CENTERS;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 2. JOURNAL_ENTRIES_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE JOURNAL_ENTRIES_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(JOURNAL_ID)                            AS JOURNAL_ID,
+    LINE_NUMBER,
+    TRIM(COST_CENTER_ID)                        AS COST_CENTER_ID,
+    TRIM(EXPENSE_CATEGORY)                      AS EXPENSE_CATEGORY,
+    TRIM(LEDGER_ACCOUNT)                        AS LEDGER_ACCOUNT,
+    ACCOUNTING_DATE,
+    AMOUNT,
+    TRIM(LINE_MEMO)                             AS LINE_MEMO,
+    TRIM(SPEND_CATEGORY)                        AS SPEND_CATEGORY,
+    TRIM(SUPPLIER)                              AS SUPPLIER,
+    TRIM(EMPLOYEE)                              AS EMPLOYEE,
+    TRIM(SOURCE)                                AS SOURCE,
+    TRIM(CREATED_BY)                            AS CREATED_BY,
+    TRIM(BUSINESS_CODE)                         AS BUSINESS_CODE,
+    -- Derived fiscal fields
+    CASE
+        WHEN MONTH(ACCOUNTING_DATE) >= 1 THEN 'FY' || YEAR(ACCOUNTING_DATE)
+    END                                         AS FISCAL_YEAR,
+    CEIL(MONTH(ACCOUNTING_DATE) / 3.0)::INT     AS FISCAL_QUARTER,
+    MONTH(ACCOUNTING_DATE)                      AS FISCAL_MONTH,
+    DAYNAME(ACCOUNTING_DATE)                    AS DAY_OF_WEEK,
+    CASE WHEN DAYOFWEEK(ACCOUNTING_DATE) IN (0, 6) THEN TRUE ELSE FALSE END AS IS_WEEKEND
+FROM BRONZE.RAW_GL_JOURNAL_LINES
+WHERE AMOUNT IS NOT NULL
+  AND ACCOUNTING_DATE IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 3. EXPENSE_ACTUALS_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE EXPENSE_ACTUALS_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(ORGANIZATION)     AS ORGANIZATION,
+    TRIM(BUSINESS_CODE)    AS BUSINESS_CODE,
+    TRIM(EXPENSE_CATEGORY) AS EXPENSE_CATEGORY,
+    TRIM(FISCAL_YEAR)      AS FISCAL_YEAR,
+    MONTH,
+    AMOUNT,
+    IS_GAAP_ONLY,
+    TRIM(SW_SUBCATEGORY)   AS SW_SUBCATEGORY,
+    CEIL(MONTH / 3.0)::INT AS FISCAL_QUARTER
+FROM BRONZE.RAW_EXPENSE_REPORT
+WHERE AMOUNT IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 4. EXPENSE_FORECAST_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE EXPENSE_FORECAST_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(ORGANIZATION)      AS ORGANIZATION,
+    TRIM(BUSINESS_CODE)     AS BUSINESS_CODE,
+    TRIM(EXPENSE_CATEGORY)  AS EXPENSE_CATEGORY,
+    TRIM(PLANNING_VERSION)  AS PLANNING_VERSION,
+    TRIM(FISCAL_YEAR)       AS FISCAL_YEAR,
+    MONTH,
+    AMOUNT,
+    IS_GAAP_ONLY,
+    TRIM(SW_SUBCATEGORY)    AS SW_SUBCATEGORY,
+    CEIL(MONTH / 3.0)::INT  AS FISCAL_QUARTER
+FROM BRONZE.RAW_EXPENSE_FORECAST
+WHERE AMOUNT IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 5. REVENUE_ACTUALS_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE REVENUE_ACTUALS_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(REVENUE_CATEGORY)  AS REVENUE_CATEGORY,
+    TRIM(BUSINESS_CODE)     AS BUSINESS_CODE,
+    TRIM(FISCAL_YEAR)       AS FISCAL_YEAR,
+    MONTH,
+    AMOUNT,
+    CEIL(MONTH / 3.0)::INT  AS FISCAL_QUARTER
+FROM BRONZE.RAW_REVENUE
+WHERE AMOUNT IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 6. REVENUE_FORECAST_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE REVENUE_FORECAST_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(REVENUE_CATEGORY)  AS REVENUE_CATEGORY,
+    TRIM(BUSINESS_CODE)     AS BUSINESS_CODE,
+    TRIM(PLANNING_VERSION)  AS PLANNING_VERSION,
+    TRIM(FISCAL_YEAR)       AS FISCAL_YEAR,
+    MONTH,
+    AMOUNT,
+    CEIL(MONTH / 3.0)::INT  AS FISCAL_QUARTER
+FROM BRONZE.RAW_REVENUE_FORECAST
+WHERE AMOUNT IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 7. HEADCOUNT_ACTUALS_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE HEADCOUNT_ACTUALS_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(ORGANIZATION)     AS ORGANIZATION,
+    TRIM(BUSINESS_CODE)    AS BUSINESS_CODE,
+    TRIM(FISCAL_YEAR)      AS FISCAL_YEAR,
+    MONTH,
+    HC,
+    CEIL(MONTH / 3.0)::INT AS FISCAL_QUARTER
+FROM BRONZE.RAW_HEADCOUNT
+WHERE HC IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 8. HEADCOUNT_FORECAST_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE HEADCOUNT_FORECAST_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(ORGANIZATION)      AS ORGANIZATION,
+    TRIM(BUSINESS_CODE)     AS BUSINESS_CODE,
+    TRIM(PLANNING_VERSION)  AS PLANNING_VERSION,
+    TRIM(FISCAL_YEAR)       AS FISCAL_YEAR,
+    MONTH,
+    HC,
+    CEIL(MONTH / 3.0)::INT  AS FISCAL_QUARTER
+FROM BRONZE.RAW_HEADCOUNT_FORECAST
+WHERE HC IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 9. INVOICES_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE INVOICES_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(INVOICE_ID)       AS INVOICE_ID,
+    TRIM(INVOICE_NUMBER)   AS INVOICE_NUMBER,
+    TRIM(SUPPLIER)         AS SUPPLIER,
+    TRIM(BUSINESS_CODE)    AS BUSINESS_CODE,
+    TRIM(COST_CENTER_ID)   AS COST_CENTER_ID,
+    INVOICE_DATE,
+    DUE_DATE,
+    AMOUNT,
+    TRIM(CURRENCY)         AS CURRENCY,
+    TRIM(STATUS)           AS STATUS,
+    PAYMENT_DATE,
+    TRIM(PO_NUMBER)        AS PO_NUMBER,
+    TRIM(DESCRIPTION)      AS DESCRIPTION,
+    TRIM(SUBMITTED_BY)     AS SUBMITTED_BY,
+    TRIM(APPROVED_BY)      AS APPROVED_BY,
+    -- Derived fields
+    DATEDIFF('day', INVOICE_DATE, COALESCE(PAYMENT_DATE, CURRENT_DATE())) AS DAYS_OUTSTANDING,
+    CASE
+        WHEN PAYMENT_DATE IS NOT NULL AND PAYMENT_DATE > DUE_DATE THEN 'Late'
+        WHEN PAYMENT_DATE IS NULL AND CURRENT_DATE() > DUE_DATE   THEN 'Overdue'
+        WHEN STATUS = 'Paid'                                      THEN 'On Time'
+        ELSE 'Open'
+    END AS PAYMENT_TIMELINESS,
+    CASE
+        WHEN MONTH(INVOICE_DATE) >= 1 THEN 'FY' || YEAR(INVOICE_DATE)
+    END AS FISCAL_YEAR,
+    CEIL(MONTH(INVOICE_DATE) / 3.0)::INT AS FISCAL_QUARTER
+FROM BRONZE.RAW_AP_INVOICES
+WHERE AMOUNT IS NOT NULL;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 10. CUSTOMER_REVENUE_DT
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE DYNAMIC TABLE CUSTOMER_REVENUE_DT
+    TARGET_LAG = '1 hour'
+    WAREHOUSE  = FINANCE_WH
+    AS
+SELECT
+    TRIM(CUSTOMER_NAME)    AS CUSTOMER_NAME,
+    TRIM(CUSTOMER_ID)      AS CUSTOMER_ID,
+    TRIM(BUSINESS_CODE)    AS BUSINESS_CODE,
+    TRIM(REVENUE_CATEGORY) AS REVENUE_CATEGORY,
+    TRIM(FISCAL_YEAR)      AS FISCAL_YEAR,
+    MONTH,
+    AMOUNT,
+    PAYMENT_DATE,
+    TRIM(PAYMENT_STATUS)   AS PAYMENT_STATUS,
+    DAYS_TO_PAY,
+    CEIL(MONTH / 3.0)::INT AS FISCAL_QUARTER
+FROM BRONZE.RAW_CUSTOMER_REVENUE
+WHERE AMOUNT IS NOT NULL;

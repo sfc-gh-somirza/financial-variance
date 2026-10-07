@@ -1,0 +1,345 @@
+name: FINANCIAL_VARIANCE_SV
+description: >
+  Semantic view for finance variance analysis. Covers budget vs. actual
+  for expenses, revenue, and headcount; supplier spend; customer revenue;
+  anomaly detection; and executive KPIs.
+
+tables:
+  - name: EXPENSE_BVA
+    description: Monthly expense budget vs. actual by organization, business code, and expense category.
+    base_table:
+      database: FINANCIAL_VARIANCE
+      schema: GOLD
+      table: EXPENSE_BVA_DT
+    dimensions:
+      - name: ORGANIZATION
+        description: Business unit (Engine Business, Components, Distribution, Power Systems, New Power, Corporate)
+        expr: ORGANIZATION
+        data_type: TEXT
+        sample_values:
+          - Engine Business
+          - Components
+          - Distribution
+          - Power Systems
+          - New Power
+          - Corporate
+        is_enum: true
+      - name: BUSINESS_CODE
+        description: Business code identifier (BC 011, BC 018, BC 025, BC 032, BC 040, BC 050)
+        expr: BUSINESS_CODE
+        data_type: TEXT
+        sample_values:
+          - BC 011
+          - BC 018
+          - BC 025
+          - BC 032
+          - BC 040
+          - BC 050
+        is_enum: true
+      - name: EXPENSE_CATEGORY
+        description: Expense line item
+        expr: EXPENSE_CATEGORY
+        data_type: TEXT
+        sample_values:
+          - Compensation & Benefits
+          - Cloud Infrastructure
+          - Travel & Entertainment
+          - Professional Services
+          - R&D Materials
+      - name: PLANNING_VERSION
+        description: Budget or forecast version
+        expr: PLANNING_VERSION
+        data_type: TEXT
+        sample_values:
+          - Plan
+          - Q1FC
+          - Q2FC
+          - Q3FC
+        is_enum: true
+      - name: FISCAL_YEAR
+        description: Fiscal year
+        expr: FISCAL_YEAR
+        data_type: TEXT
+        sample_values:
+          - FY2025
+          - FY2026
+        is_enum: true
+      - name: MONTH
+        expr: MONTH
+        data_type: NUMBER
+      - name: FISCAL_QUARTER
+        expr: FISCAL_QUARTER
+        data_type: NUMBER
+      - name: IS_FAVORABLE
+        description: Whether the variance is favorable (actual <= budget for expenses)
+        expr: IS_FAVORABLE
+        data_type: BOOLEAN
+      - name: LEADER
+        description: Cost center leader name
+        expr: LEADER
+        data_type: TEXT
+      - name: REGION
+        description: Geographic region
+        expr: REGION
+        data_type: TEXT
+        sample_values:
+          - North America
+          - EMEA
+          - APAC
+        is_enum: true
+    metrics:
+      - name: TOTAL_ACTUAL_EXPENSE
+        description: Sum of actual expense amount in dollars
+        expr: SUM(ACTUAL_AMOUNT)
+      - name: TOTAL_FORECAST_EXPENSE
+        description: Sum of budget/forecast expense amount in dollars
+        expr: SUM(FORECAST_AMOUNT)
+      - name: TOTAL_VARIANCE
+        description: Sum of variance (actual minus forecast). Positive means overspend.
+        expr: SUM(VARIANCE_AMOUNT)
+      - name: AVG_VARIANCE_PCT
+        description: Average variance percentage
+        expr: AVG(VARIANCE_PCT)
+
+  - name: REVENUE_BVA
+    description: Monthly revenue budget vs. actual by category and business code.
+    base_table:
+      database: FINANCIAL_VARIANCE
+      schema: GOLD
+      table: REVENUE_BVA_DT
+    dimensions:
+      - name: REVENUE_CATEGORY
+        description: Revenue stream
+        expr: REVENUE_CATEGORY
+        data_type: TEXT
+        sample_values:
+          - Product Revenue
+          - Service Revenue
+          - Aftermarket Revenue
+          - Power Generation
+          - New Power Revenue
+      - name: BUSINESS_CODE
+        expr: BUSINESS_CODE
+        data_type: TEXT
+      - name: PLANNING_VERSION
+        expr: PLANNING_VERSION
+        data_type: TEXT
+      - name: FISCAL_YEAR
+        expr: FISCAL_YEAR
+        data_type: TEXT
+      - name: MONTH
+        expr: MONTH
+        data_type: NUMBER
+      - name: FISCAL_QUARTER
+        expr: FISCAL_QUARTER
+        data_type: NUMBER
+    metrics:
+      - name: TOTAL_ACTUAL_REVENUE
+        expr: SUM(ACTUAL_AMOUNT)
+      - name: TOTAL_FORECAST_REVENUE
+        expr: SUM(FORECAST_AMOUNT)
+      - name: REVENUE_VARIANCE
+        expr: SUM(VARIANCE_AMOUNT)
+
+  - name: HEADCOUNT_BVA
+    description: Monthly headcount actual vs. plan by organization.
+    base_table:
+      database: FINANCIAL_VARIANCE
+      schema: GOLD
+      table: HEADCOUNT_BVA_DT
+    dimensions:
+      - name: ORGANIZATION
+        expr: ORGANIZATION
+        data_type: TEXT
+      - name: BUSINESS_CODE
+        expr: BUSINESS_CODE
+        data_type: TEXT
+      - name: PLANNING_VERSION
+        expr: PLANNING_VERSION
+        data_type: TEXT
+      - name: FISCAL_YEAR
+        expr: FISCAL_YEAR
+        data_type: TEXT
+      - name: MONTH
+        expr: MONTH
+        data_type: NUMBER
+      - name: FISCAL_QUARTER
+        expr: FISCAL_QUARTER
+        data_type: NUMBER
+    metrics:
+      - name: TOTAL_ACTUAL_HC
+        expr: SUM(ACTUAL_HC)
+      - name: TOTAL_PLAN_HC
+        expr: SUM(FORECAST_HC)
+      - name: HC_VARIANCE
+        expr: SUM(VARIANCE_HC)
+
+  - name: SUPPLIER_SPEND
+    description: Quarterly supplier spend with quarter-over-quarter comparison and ranking.
+    base_table:
+      database: FINANCIAL_VARIANCE
+      schema: GOLD
+      table: SUPPLIER_SPEND_QUARTERLY_DT
+    dimensions:
+      - name: SUPPLIER
+        description: Supplier name
+        expr: SUPPLIER
+        data_type: TEXT
+      - name: BUSINESS_CODE
+        expr: BUSINESS_CODE
+        data_type: TEXT
+      - name: FISCAL_YEAR
+        expr: FISCAL_YEAR
+        data_type: TEXT
+      - name: FISCAL_QUARTER
+        expr: FISCAL_QUARTER
+        data_type: NUMBER
+      - name: SPEND_RANK
+        description: Rank of supplier by spend within business code and quarter (1 = highest)
+        expr: SPEND_RANK
+        data_type: NUMBER
+    metrics:
+      - name: TOTAL_SUPPLIER_SPEND
+        expr: SUM(TOTAL_SPEND)
+      - name: TOTAL_INVOICES
+        expr: SUM(INVOICE_COUNT)
+      - name: TOTAL_QOQ_CHANGE
+        description: Quarter-over-quarter spend change in dollars
+        expr: SUM(QOQ_CHANGE)
+
+  - name: CUSTOMER_REVENUE
+    description: Customer-level monthly revenue with payment trends.
+    base_table:
+      database: FINANCIAL_VARIANCE
+      schema: GOLD
+      table: CUSTOMER_REVENUE_DETAIL_DT
+    dimensions:
+      - name: CUSTOMER_NAME
+        description: Customer company name
+        expr: CUSTOMER_NAME
+        data_type: TEXT
+      - name: CUSTOMER_ID
+        expr: CUSTOMER_ID
+        data_type: TEXT
+      - name: BUSINESS_CODE
+        expr: BUSINESS_CODE
+        data_type: TEXT
+      - name: REVENUE_CATEGORY
+        expr: REVENUE_CATEGORY
+        data_type: TEXT
+      - name: FISCAL_YEAR
+        expr: FISCAL_YEAR
+        data_type: TEXT
+      - name: MONTH
+        expr: MONTH
+        data_type: NUMBER
+      - name: FISCAL_QUARTER
+        expr: FISCAL_QUARTER
+        data_type: NUMBER
+      - name: PAYMENT_STATUS
+        description: Payment status (Paid, Overdue)
+        expr: PAYMENT_STATUS
+        data_type: TEXT
+    metrics:
+      - name: TOTAL_CUSTOMER_REVENUE
+        expr: SUM(REVENUE_AMOUNT)
+      - name: AVG_DAYS_TO_PAY
+        expr: AVG(DAYS_TO_PAY)
+
+  - name: ANOMALIES
+    description: Detected financial anomalies including duplicate invoices, unusual amounts, suspicious entries, and supplier concentration risk.
+    base_table:
+      database: FINANCIAL_VARIANCE
+      schema: GOLD
+      table: ANOMALY_SCORES_DT
+    dimensions:
+      - name: ANOMALY_TYPE
+        description: Type of anomaly (DUPLICATE_INVOICE, UNUSUAL_AMOUNT, SUSPICIOUS_ENTRY, SUPPLIER_CONCENTRATION)
+        expr: ANOMALY_TYPE
+        data_type: TEXT
+        sample_values:
+          - DUPLICATE_INVOICE
+          - UNUSUAL_AMOUNT
+          - SUSPICIOUS_ENTRY
+          - SUPPLIER_CONCENTRATION
+        is_enum: true
+      - name: SEVERITY
+        description: Risk severity
+        expr: SEVERITY
+        data_type: TEXT
+        sample_values:
+          - HIGH
+          - MEDIUM
+          - LOW
+        is_enum: true
+      - name: SOURCE_ID
+        expr: SOURCE_ID
+        data_type: TEXT
+      - name: BUSINESS_CODE
+        expr: BUSINESS_CODE
+        data_type: TEXT
+      - name: SUPPLIER
+        expr: SUPPLIER
+        data_type: TEXT
+      - name: DESCRIPTION
+        description: Human-readable description of the anomaly
+        expr: DESCRIPTION
+        data_type: TEXT
+    metrics:
+      - name: ANOMALY_COUNT
+        expr: COUNT(*)
+      - name: TOTAL_ANOMALY_AMOUNT
+        expr: SUM(AMOUNT)
+
+verified_queries:
+  - name: top_expense_variances_fy2026
+    question: What are the largest expense variances in FY2026 vs Plan?
+    sql: |
+      SELECT ORGANIZATION, EXPENSE_CATEGORY, BUSINESS_CODE,
+             SUM(ACTUAL_AMOUNT) AS TOTAL_ACTUAL,
+             SUM(FORECAST_AMOUNT) AS TOTAL_BUDGET,
+             SUM(VARIANCE_AMOUNT) AS TOTAL_VARIANCE,
+             ROUND(SUM(VARIANCE_AMOUNT) / NULLIF(ABS(SUM(FORECAST_AMOUNT)), 0) * 100, 1) AS VARIANCE_PCT
+      FROM FINANCIAL_VARIANCE.GOLD.EXPENSE_BVA_DT
+      WHERE FISCAL_YEAR = 'FY2026' AND PLANNING_VERSION = 'Plan'
+      GROUP BY ORGANIZATION, EXPENSE_CATEGORY, BUSINESS_CODE
+      ORDER BY ABS(SUM(VARIANCE_AMOUNT)) DESC
+      LIMIT 10
+  - name: top_customers_bc011
+    question: Who are the top customers for BC 011 based on revenue?
+    sql: |
+      SELECT CUSTOMER_NAME, REVENUE_CATEGORY,
+             SUM(REVENUE_AMOUNT) AS TOTAL_REVENUE,
+             ROUND(AVG(DAYS_TO_PAY), 0) AS AVG_DAYS_TO_PAY
+      FROM FINANCIAL_VARIANCE.GOLD.CUSTOMER_REVENUE_DETAIL_DT
+      WHERE BUSINESS_CODE = 'BC 011'
+      GROUP BY CUSTOMER_NAME, REVENUE_CATEGORY
+      ORDER BY TOTAL_REVENUE DESC
+  - name: supplier_spend_qoq_bc018
+    question: Compare supplier spend for BC 018 between Q1 and Q2 2026
+    sql: |
+      SELECT SUPPLIER, FISCAL_QUARTER, TOTAL_SPEND, PRIOR_QUARTER_SPEND,
+             QOQ_CHANGE, QOQ_CHANGE_PCT
+      FROM FINANCIAL_VARIANCE.GOLD.SUPPLIER_SPEND_QUARTERLY_DT
+      WHERE BUSINESS_CODE = 'BC 018' AND FISCAL_YEAR = 'FY2026'
+            AND FISCAL_QUARTER IN (1, 2)
+      ORDER BY ABS(QOQ_CHANGE) DESC
+  - name: high_severity_anomalies
+    question: What high severity anomalies have been detected?
+    sql: |
+      SELECT ANOMALY_TYPE, SOURCE_ID, SUPPLIER, BUSINESS_CODE,
+             AMOUNT, DESCRIPTION
+      FROM FINANCIAL_VARIANCE.GOLD.ANOMALY_SCORES_DT
+      WHERE SEVERITY = 'HIGH'
+      ORDER BY AMOUNT DESC
+  - name: headcount_variance_by_org
+    question: How does headcount compare to plan by organization?
+    sql: |
+      SELECT ORGANIZATION, BUSINESS_CODE,
+             SUM(ACTUAL_HC) AS TOTAL_ACTUAL_HC,
+             SUM(FORECAST_HC) AS TOTAL_PLAN_HC,
+             SUM(VARIANCE_HC) AS HC_VARIANCE
+      FROM FINANCIAL_VARIANCE.GOLD.HEADCOUNT_BVA_DT
+      WHERE FISCAL_YEAR = 'FY2026' AND PLANNING_VERSION = 'Plan'
+      GROUP BY ORGANIZATION, BUSINESS_CODE
+      ORDER BY ABS(SUM(VARIANCE_HC)) DESC
